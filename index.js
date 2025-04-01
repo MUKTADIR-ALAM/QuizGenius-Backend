@@ -1,49 +1,114 @@
 require("dotenv").config();
-const express = require('express');
+const express = require("express");
 const app = express();
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 5000;
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// middleware
-app.use(cors());
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://localhost:5000"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
+
+// Middleware
 app.use(express.json());
 
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.vqld2.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+// MongoDB Connection
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.cd15p.mongodb.net/?retryWrites=true&w=majority`;
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
-    strict: true,
+    strict: false,
     deprecationErrors: true,
   },
 });
 
+// Generate quiz using Gemini API
+async function generateQuiz(subject, topic, subTopic, difficulty, numQuestions = 5) {
+  let category = subject;
+  
+  if (topic) category += `, Topic: ${topic}`;
+  if (subTopic) category += `, Sub-topic: ${subTopic}`;
+
+  const prompt = `
+  Generate ${numQuestions} multiple-choice quiz questions on the subject "${subject}".
+  ${topic ? `Focus on the topic: "${topic}".` : ""}
+  ${subTopic ? `Drill down into the sub-topic: "${subTopic}".` : ""}
+  
+  Each question should:
+  - Have 4 answer options.
+  - Clearly indicate the correct answer.
+  - Be at a "${difficulty}" difficulty level.
+  - Be formatted as a JSON array like this:
+
+  [
+    {
+      "question": "What is the limit of (sin x)/x as x approaches 0?",
+      "options": ["1", "0", "Infinity", "-1"],
+      "correctAnswer": "1"
+    }
+  ]
+  `;
+
+  console.log("Sending request to Gemini API...");
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  let quizData = response.text();
+
+  // Clean up JSON format
+  quizData = quizData.replace(/```json|```/g, "").trim();
+
+  return JSON.parse(quizData);
+}
+
+
 async function run() {
   try {
-    // ------------------db collection---------------------------
-    // const database = client.db("quizzGenius");
-    // const paymentsCollection = database.collection("payments");
-
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
-    // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    const quizzesCollection = client.db("quizGenius").collection("quizzes");
 
-
+    // 🔹 API Route to Generate a Quiz
+    app.get("/quizzes", async (req, res) => {
+     
+        const {
+          selectedSubject,
+          selectedTopic = "",
+          subTopics = "",
+          numOfQuestions = 5,
+          levelOfQuestions = "Intermediate",
+        } = req.query;
     
+        const quizData = await generateQuiz(
+          selectedSubject,
+          selectedTopic,
+          subTopics,
+          levelOfQuestions,
+          numOfQuestions
+        );
 
-  } finally {
-    // Ensures that the client will close when you finish/error
-    await client.close();
+        // const result = await quizzesCollection.insertMany(quizData) 
+        console.log(quizData)
+       
+      res.send(quizData);
+    });
+
+    console.log("Connected to MongoDB!");
+  } catch (error) {
+    console.error("MongoDB Connection Error:", error);
   }
 }
+
 run().catch(console.dir);
 
 app.get("/", (req, res) => {
-  res.send("Hello World!");
+  res.send("Quiz Server is running");
 });
 
 app.listen(port, () => {
