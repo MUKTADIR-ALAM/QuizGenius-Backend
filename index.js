@@ -31,9 +31,15 @@ const client = new MongoClient(uri, {
 });
 
 // Generate quiz using Gemini API
-async function generateQuiz(subject, topic, subTopic, difficulty, numQuestions = 5) {
+async function generateQuiz(
+  subject,
+  topic,
+  subTopic,
+  difficulty,
+  numQuestions = 5
+) {
   let category = subject;
-  
+
   if (topic) category += `, Topic: ${topic}`;
   if (subTopic) category += `, Sub-topic: ${subTopic}`;
 
@@ -58,7 +64,14 @@ async function generateQuiz(subject, topic, subTopic, difficulty, numQuestions =
   `;
 
   console.log("Sending request to Gemini API...");
-  const result = await model.generateContent(prompt);
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.8,
+      top_p: 0.9,
+      max_output_tokens: 500,
+    },
+  });
   const response = await result.response;
   let quizData = response.text();
 
@@ -68,35 +81,134 @@ async function generateQuiz(subject, topic, subTopic, difficulty, numQuestions =
   return JSON.parse(quizData);
 }
 
+// Generate lesson using Gemini AI
+async function generateLesson(subject, topic, subTopic, levelOfQuestions) {
+  let category = subject;
+
+  if (topic) category += `, Topic: ${topic}`;
+  if (subTopic) category += `, Sub-topic: ${subTopic}`;
+
+  const prompt = `
+  Generate a structured lesson on the subject "${subject}".
+  ${topic ? `Include topic: "${topic}".` : ""}
+  ${subTopic ? `Focus on sub-topic: "${subTopic}".` : ""}
+  ${levelOfQuestions ? `Difficulty level: "${levelOfQuestions}".` : ""}
+  
+  The lesson should be formatted as valid JSON:
+  {
+    "title": "Lesson Title",
+    "subject":"Mathematics",
+    "topic":"Algebra"
+    "introduction": "Brief introduction...",
+    "objectives": ["Objective 1", "Objective 2"],
+    "sections": [
+      {
+        "heading": "Section 1 Heading",
+        "content": "Detailed content for section 1."
+      },
+      {
+        "heading": "Section 2 Heading",
+        "content": "Detailed content for section 2."
+      }
+    ],
+    "conclusion": "Summary of the lesson..."
+  }
+  Only return JSON, no additional text.
+  `;
+
+  console.log("Sending request for creating lessons to Gemini API...");
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.8,
+      top_p: 0.9,
+      max_output_tokens: 500,
+    },
+  });
+  console.log(result);
+  let lessonText = result.response
+    .text()
+    .replace(/```json|```/g, "")
+    .trim();
+
+  return lessonText;
+}
 
 async function run() {
   try {
     await client.connect();
     const quizzesCollection = client.db("quizGenius").collection("quizzes");
+    const lessonsCollection = client.db("quizGenius").collection("lessons");
 
     // 🔹 API Route to Generate a Quiz
     app.get("/quizzes", async (req, res) => {
-     
-        const {
-          selectedSubject,
-          selectedTopic = "",
-          subTopics = "",
-          numOfQuestions = 5,
-          levelOfQuestions = "Intermediate",
-        } = req.query;
-    
-        const quizData = await generateQuiz(
-          selectedSubject,
-          selectedTopic,
-          subTopics,
-          levelOfQuestions,
-          numOfQuestions
-        );
+      const {
+        selectedSubject,
+        selectedTopic = "",
+        subTopics = "",
+        numOfQuestions = 5,
+        levelOfQuestions = "Intermediate",
+      } = req.query;
 
-        // const result = await quizzesCollection.insertMany(quizData) 
-        console.log(quizData)
-       
+      // const existingQuiz = await quizzesCollection.findOne({
+      //   subject: selectedSubject,
+      //   topic: selectedTopic,
+      //   subTopic: subTopics,
+      //   difficulty: levelOfQuestions,
+      // });
+
+      // if (existingQuiz) {
+      //   console.log("Returning cached quiz from MongoDB...");
+      //   return res.send(existingQuiz.questions);
+      // }
+      const quizData = await generateQuiz(
+        selectedSubject,
+        selectedTopic,
+        subTopics,
+        levelOfQuestions,
+        numOfQuestions
+      );
+
+      // const newQuiz = {
+      //   subject: selectedSubject,
+      //   topic: selectedTopic,
+      //   subTopic: subTopics,
+      //   difficulty: levelOfQuestions,
+      //   questions: quizData,
+      //   createdAt: new Date(),
+      // };
+
+      // await quizzesCollection.insertOne(newQuiz);
       res.send(quizData);
+    });
+
+    // Generate Lessons
+    app.post("/lessons", async (req, res) => {
+      const {
+        selectedSubject,
+        topics = "",
+        subTopics = "",
+        levelOfQuestions,
+      } = req.body;
+
+      const lessonData = JSON.parse(
+        await generateLesson(
+          selectedSubject,
+          topics,
+          subTopics,
+          levelOfQuestions
+        )
+      );
+
+      // Insert into DB
+      const insertedLesson = await lessonsCollection.insertOne(lessonData);
+      res.send(insertedLesson);
+    });
+
+    app.get("/lessons", async (req, res) => {
+      const result = await lessonsCollection.find().toArray();
+
+      res.send(result);
     });
 
     console.log("Connected to MongoDB!");
