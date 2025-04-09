@@ -74,6 +74,40 @@ async function run() {
   try {
     await client.connect();
     const quizzesCollection = client.db("quizGenius").collection("quizzes");
+    const database = client.db("quizzGenius");
+    const paymentsCollection = database.collection("payments");
+
+    app.post("/create_payment_invoice", async (req, res) => {
+      // console.log("working");
+      const { ammount } = req.body;
+
+      // const ammount = parseInt(sammount); 
+
+      // create a new paymentIntent
+
+      const options = {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer d1d38461d4c74998b07772dda9cd47ee',
+          'Content-Type': 'application/json'
+        },
+        body: `{"amountCurrency":"USD","lifeTime":440,"amount":${ammount},"acceptedCoins":["btc","usdt","usdc"],"underPaidCover":1,"feePaidByPayer":true,"returnUrl":"https://quizz-genius.vercel.app/"}`
+      };
+
+      try {
+        const response = await fetch(
+          "https://payvra.com/api/v1/merchants/invoice/create",
+          options
+        );
+        const data = await response.json();
+        res.send(data);
+      } catch (error) {
+        console.log(error);
+        // Send an error response back to the client
+        res.status(500).json({ error: "Failed to create payment invoice" });
+      }
+    });
+       
 
     // 🔹 API Route to Generate a Quiz
     app.get("/quizzes", async (req, res) => {
