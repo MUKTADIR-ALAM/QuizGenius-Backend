@@ -72,7 +72,9 @@ async function generateQuiz(subject, topic, subTopic, difficulty, numQuestions =
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
+
+
     const quizzesCollection = client.db("quizGenius").collection("quizzes");
     const database = client.db("quizzGenius");
     const paymentsCollection = database.collection("payments");
@@ -134,7 +136,7 @@ async function run() {
       res.send(quizData);
     });
 
-    console.log("Connected to MongoDB!");
+    // console.log("Connected to MongoDB!");
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
   }
