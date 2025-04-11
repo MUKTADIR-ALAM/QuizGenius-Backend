@@ -7,7 +7,7 @@ const { PayvraClient } = require("payvra-sdk");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const port = process.env.PORT || 5000;
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const pdf = require('pdf-parse');
+const pdf = require("pdf-parse");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -32,9 +32,6 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   },
 });
-
-
-
 
 // Generate quiz using Gemini API
 async function generateQuiz(
@@ -85,8 +82,6 @@ async function generateQuiz(
     ...
   ]
   `;
-
-  console.log("Sending request to Gemini API...");
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
@@ -213,7 +208,7 @@ const generateLesson = async (subject, topic, subTopic, levelOfQuestions) => {
     const candidate = result?.response?.candidates?.[0];
     let rawText;
 
-    console.log(result);
+
 
     // Check if candidate and content are valid
     if (candidate?.content?.parts?.[0]?.text) {
@@ -236,9 +231,6 @@ const generateLesson = async (subject, topic, subTopic, levelOfQuestions) => {
     // Clean up the raw text
     let lessonText = rawText.replace(/```json|```/g, "").trim();
     lessonText = lessonText.replace(/\n+/g, " ").replace(/\s{2,}/g, " "); // Further clean-up of excessive newlines or spaces
-
-    console.log("✅ Checking raw lessonText:", lessonText);
-    console.log("🔎 Type of lessonText:", typeof lessonText);
 
     const parsedLesson =
       typeof lessonText === "string" ? JSON.parse(lessonText) : lessonText;
@@ -269,7 +261,7 @@ async function generateQuizFromText(text) {
   ]
   `;
 
-  console.log("Sending request to Gemini API...");
+
 
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -304,11 +296,9 @@ async function generateQuizFromText(text) {
 
   let quizData = sanitizeGeminiOutput(responseText);
 
-
   try {
     return JSON.parse(quizData); // Parse the sanitized JSON
   } catch (err) {
-    
     throw new Error("Gemini returned invalid JSON.");
   }
 }
@@ -322,20 +312,20 @@ async function run() {
     const lessonsCollection = client.db("quizGenius").collection("lessons");
 
     app.post("/create_payment_invoice", async (req, res) => {
-      // console.log("working");
+
       const { ammount } = req.body;
 
-      // const ammount = parseInt(sammount); 
+      // const ammount = parseInt(sammount);
 
       // create a new paymentIntent
 
       const options = {
-        method: 'POST',
+        method: "POST",
         headers: {
-          Authorization: 'Bearer d1d38461d4c74998b07772dda9cd47ee',
-          'Content-Type': 'application/json'
+          Authorization: "Bearer d1d38461d4c74998b07772dda9cd47ee",
+          "Content-Type": "application/json",
         },
-        body: `{"amountCurrency":"USD","lifeTime":440,"amount":${ammount},"acceptedCoins":["btc","usdt","usdc"],"underPaidCover":1,"feePaidByPayer":true,"returnUrl":"https://quizz-genius.vercel.app/"}`
+        body: `{"amountCurrency":"USD","lifeTime":440,"amount":${ammount},"acceptedCoins":["btc","usdt","usdc"],"underPaidCover":1,"feePaidByPayer":true,"returnUrl":"https://quizz-genius.vercel.app/"}`,
       };
 
       try {
@@ -346,13 +336,11 @@ async function run() {
         const data = await response.json();
         res.send(data);
       } catch (error) {
-        console.log(error);
-        // Send an error response back to the client
+       
         res.status(500).json({ error: "Failed to create payment invoice" });
       }
     });
-       
-    
+
     // 🔹 API Route to Generate a Quiz
     app.get("/quizzes", async (req, res) => {
       const {
@@ -395,29 +383,27 @@ async function run() {
       res.send(quizData);
     });
 
-
     app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
       try {
         const pdfBuffer = req.file.buffer;
-    
+
         // Parse the PDF buffer
         const data = await pdf(pdfBuffer);
         const text = data.text;
-    
+
         if (!text) {
           return res.status(400).json({ message: "No text found in PDF" });
         }
 
         const quizData = await generateQuizFromText(text);
-    
+
         res.json({ quiz: quizData });
       } catch (error) {
-  
-        res.status(500).json({ message: "Failed to process PDF and generate quiz" });
+        res
+          .status(500)
+          .json({ message: "Failed to process PDF and generate quiz" });
       }
     });
-    
-
 
     // Generate Lessons
     app.post("/lessons", async (req, res) => {
@@ -435,28 +421,30 @@ async function run() {
         levelOfQuestions
       );
 
-
       if (lessonData && Object.keys(lessonData).length > 0) {
         const insertedLesson = await lessonsCollection.insertOne(lessonData);
         res.send(insertedLesson);
       } else {
-
         res.status(400).send("Invalid lesson data.");
       }
     });
 
     app.get("/lessons", async (req, res) => {
-      console.log(req.query)
+    
       const page = parseInt(req.query.currentPage);
       const size = parseInt(req.query.itemsPerPage);
       const skip = page * size;
       const count = await lessonsCollection.countDocuments();
-      const result = await lessonsCollection.find().skip(skip).limit(size).toArray();
-      res.send({result,count});
+      const result = await lessonsCollection
+        .find()
+        .skip(skip)
+        .limit(size)
+        .toArray();
+      res.send({ result, count });
     });
     app.get("/lesson/:id", async (req, res) => {
       const { id } = req.params;
-   
+
       const query = { _id: new ObjectId(id) };
       const lesson = await lessonsCollection.findOne(query);
       if (!lesson) {
@@ -465,61 +453,67 @@ async function run() {
       res.send(lesson);
     });
 
-
     app.get("/lessons-query", async (req, res) => {
-      const { selectedSubject, selectedTopic } = req.query;
-      console.log(req.query)
-      const page = parseInt(req.query.currentPage);
-      const size = parseInt(req.query.itemsPerPage);
+      const { subject, topic, currentPage, itemsPerPage } = req.query;
+
+      const page = parseInt(currentPage);
+      const size = parseInt(itemsPerPage);
       const skip = page * size;
-      if (!selectedSubject) {
+
+      if (!subject) {
         return res.status(400).send({ message: "Missing subject" });
       }
 
       try {
-        const query = { subject: selectedSubject };
-        if (selectedTopic.length > 0) {
-          query.topic = selectedTopic;
+        const query = { subject: subject };
+        if (topic && topic.length() > 0) {
+          query.topic = topic;
         }
-   
-        const count = await lessonsCollection.countDocuments();
-        const lessons = await lessonsCollection.find(query).skip(skip).limit(size).toArray();
-        if (lessons.length === 0) {
-          return res.status(404).send({ message: "No lessons found" });
+        let result;
+        const count = await lessonsCollection.countDocuments(query);
+        if (count > 8) {
+          result = await lessonsCollection
+            .find(query)
+            .skip(skip)
+            .limit(size)
+            .toArray();
         }
+        result = await lessonsCollection
+          .find(query).toArray();
+
     
-        res.send({lessons,count});
+
+        res.send({ result, count });
       } catch (error) {
-       
+        console.error("Error fetching lessons:", error);
         res.status(500).send({ message: "Error fetching lessons" });
       }
     });
 
     app.get("/subjects", async (req, res) => {
       try {
-        const subjects = await lessonsCollection.aggregate([
-          {
-            $group: {
-              _id: "$subject",
-              topics: { $push: "$topics" }
-            }
-          },
-          {
-            $project: {
-              subject: "$_id",
-              topics: 1,
-              _id: 0
-            }
-          }
-        ]).toArray();
-    console.log(subjects)
-        // return res.json(subjects);
+        const subjects = await lessonsCollection
+          .aggregate([
+            {
+              $group: {
+                _id: "$subject",
+                topics: { $push: "$topics" },
+              },
+            },
+            {
+              $project: {
+                subject: "$_id",
+                topics: 1,
+                _id: 0,
+              },
+            },
+          ])
+          .toArray();
       } catch (error) {
         console.error("Error fetching subjects:", error);
         res.status(500).send({ message: "Error fetching subjects" });
       }
     });
-    
 
     console.log("Connected to MongoDB!");
   } catch (error) {
