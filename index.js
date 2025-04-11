@@ -411,7 +411,6 @@ async function run() {
 
     app.get("/lessons", async (req, res) => {
       const result = await lessonsCollection.find().toArray();
-
       res.send(result);
     });
     app.get("/lesson/:id", async (req, res) => {
