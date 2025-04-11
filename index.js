@@ -446,8 +446,13 @@ async function run() {
     });
 
     app.get("/lessons", async (req, res) => {
-      const result = await lessonsCollection.find().toArray();
-      res.send(result);
+      console.log(req.query)
+      const page = parseInt(req.query.currentPage);
+      const size = parseInt(req.query.itemsPerPage);
+      const skip = page * size;
+      const count = await lessonsCollection.countDocuments();
+      const result = await lessonsCollection.find().skip(skip).limit(size).toArray();
+      res.send({result,count});
     });
     app.get("/lesson/:id", async (req, res) => {
       const { id } = req.params;
@@ -463,7 +468,10 @@ async function run() {
 
     app.get("/lessons-query", async (req, res) => {
       const { selectedSubject, selectedTopic } = req.query;
-
+      console.log(req.query)
+      const page = parseInt(req.query.currentPage);
+      const size = parseInt(req.query.itemsPerPage);
+      const skip = page * size;
       if (!selectedSubject) {
         return res.status(400).send({ message: "Missing subject" });
       }
@@ -474,13 +482,13 @@ async function run() {
           query.topic = selectedTopic;
         }
    
-
-        const lessons = await lessonsCollection.find(query).toArray();
+        const count = await lessonsCollection.countDocuments();
+        const lessons = await lessonsCollection.find(query).skip(skip).limit(size).toArray();
         if (lessons.length === 0) {
           return res.status(404).send({ message: "No lessons found" });
         }
     
-        res.json(lessons);
+        res.send({lessons,count});
       } catch (error) {
        
         res.status(500).send({ message: "Error fetching lessons" });
