@@ -12,7 +12,7 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5000"],
+    origin: "*", 
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
@@ -32,9 +32,15 @@ const client = new MongoClient(uri, {
 });
 
 // Generate quiz using Gemini API
-async function generateQuiz(subject, topic, subTopic, difficulty, numQuestions = 5) {
+async function generateQuiz(
+  subject,
+  topic,
+  subTopic,
+  difficulty,
+  numQuestions = 5
+) {
   let category = subject;
-  
+
   if (topic) category += `, Topic: ${topic}`;
   if (subTopic) category += `, Sub-topic: ${subTopic}`;
 
@@ -69,11 +75,9 @@ async function generateQuiz(subject, topic, subTopic, difficulty, numQuestions =
   return JSON.parse(quizData);
 }
 
-
 async function run() {
   try {
     // await client.connect();
-
 
     const quizzesCollection = client.db("quizGenius").collection("quizzes");
     const database = client.db("quizzGenius");
@@ -83,17 +87,17 @@ async function run() {
       // console.log("working");
       const { ammount } = req.body;
 
-      // const ammount = parseInt(sammount); 
+      // const ammount = parseInt(sammount);
 
       // create a new paymentIntent
 
       const options = {
-        method: 'POST',
+        method: "POST",
         headers: {
-          Authorization: 'Bearer d1d38461d4c74998b07772dda9cd47ee',
-          'Content-Type': 'application/json'
+          Authorization: "Bearer d1d38461d4c74998b07772dda9cd47ee",
+          "Content-Type": "application/json",
         },
-        body: `{"amountCurrency":"USD","lifeTime":440,"amount":${ammount},"acceptedCoins":["btc","usdt","usdc"],"underPaidCover":1,"feePaidByPayer":true,"returnUrl":"https://quizz-genius.vercel.app/"}`
+        body: `{"amountCurrency":"USD","lifeTime":440,"amount":${ammount},"acceptedCoins":["btc","usdt","usdc"],"underPaidCover":1,"feePaidByPayer":true,"returnUrl":"https://quizz-genius.vercel.app/"}`,
       };
 
       try {
@@ -109,30 +113,28 @@ async function run() {
         res.status(500).json({ error: "Failed to create payment invoice" });
       }
     });
-       
 
     // 🔹 API Route to Generate a Quiz
     app.get("/quizzes", async (req, res) => {
-     
-        const {
-          selectedSubject,
-          selectedTopic = "",
-          subTopics = "",
-          numOfQuestions = 5,
-          levelOfQuestions = "Intermediate",
-        } = req.query;
-    
-        const quizData = await generateQuiz(
-          selectedSubject,
-          selectedTopic,
-          subTopics,
-          levelOfQuestions,
-          numOfQuestions
-        );
+      const {
+        selectedSubject,
+        selectedTopic = "",
+        subTopics = "",
+        numOfQuestions = 5,
+        levelOfQuestions = "Intermediate",
+      } = req.query;
 
-        // const result = await quizzesCollection.insertMany(quizData) 
-        console.log(quizData)
-       
+      const quizData = await generateQuiz(
+        selectedSubject,
+        selectedTopic,
+        subTopics,
+        levelOfQuestions,
+        numOfQuestions
+      );
+
+      // const result = await quizzesCollection.insertMany(quizData)
+      console.log(quizData);
+
       res.send(quizData);
     });
 
