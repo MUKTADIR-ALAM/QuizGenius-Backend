@@ -13,7 +13,7 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 app.use(
   cors({
-    origin: "*", 
+    origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
@@ -33,7 +33,6 @@ const client = new MongoClient(uri, {
   },
 });
 
-// Generate quiz using Gemini API
 async function generateQuiz(
   subject,
   topic,
@@ -47,87 +46,39 @@ async function generateQuiz(
   if (subTopic) category += `, Sub-topic: ${subTopic}`;
 
   const prompt = `
-  Generate ${numQuestions} multiple-choice quiz questions for the subject "${subject}"${
-    topic ? `, focused on topic "${topic}"` : ""
-  }${subTopic ? `, and sub-topic "${subTopic}"` : ""}.
-  Difficulty level: "${difficulty}".
-
-  for Difficulty level:
-  if beginner-grade 5 to 10 
-  if intermediate-grade 10 to 12 
-  if hard-grade university level 
+  Generate ${numQuestions} multiple-choice quiz questions on the subject "${subject}".
+  ${topic ? `Focus on the topic: "${topic}".` : ""}
+  ${subTopic ? `Drill down into the sub-topic: "${subTopic}".` : ""}
   
-  Return a **valid, compact, one-line JSON array**.
-  ⚠️ DO NOT include:
-  - Markdown formatting
-  - Code blocks
-  - Explanations outside the JSON
-  - Line breaks inside string values
-  
-  Each question must be an object with the following fields:
-  - "question": a concise question (in one line, no newlines)
-  - "options": an array of 4 options
-  - "correctAnswer": one of the options, exactly matching
-  - "explanation": a brief explanation of the correct answer
-  + "explanation": a short, one-line explanation (no line breaks or special symbols like √)
+  Each question should:
+  - Have 4 answer options.
+  - Clearly indicate the correct answer.
+  - Be at a "${difficulty}" difficulty level.
+  - Be formatted as a JSON array like this:
 
-  The output must look like this:
   [
     {
-      "question": "...",
-      "options": ["...", "...", "...", "..."],
-      "correctAnswer": "...",
-      "explanation": "..."
-    },
-    ...
+  "question": "What is the limit of (sin x)/x as x approaches 0?",
+  "options": ["1", "0", "Infinity", "-1"],
+  "correctAnswer": "1",
+  "explanation": "As x approaches 0, (sin x)/x approaches 1 by standard limit rule."
+}
+
   ]
   `;
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.8,
-      top_p: 0.9,
-      max_output_tokens: 500,
-    },
-  });
 
-  // Wait for the response and extract the text
-  const responseText = await result.response.text();
+  console.log("Sending request to Gemini API...");
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  let quizData = response.text();
 
-  function sanitizeGeminiOutput(output) {
-    // Remove markdown and newline junk
-    let fixed = output.replace(/```json|```/g, "").trim();
-    fixed = fixed.replace(/(\r\n|\n|\r)/gm, " ");
-    fixed = fixed.replace(/,\s*}/g, "}").replace(/,\s*]/g, "]");
-    fixed = fixed.replace(/√/g, "sqrt");
-    fixed = fixed.replace(/[½¼¾⅓⅔⅛⅜⅝⅞]/g, "");
+  // Clean up JSON format
+  quizData = quizData.replace(/```json|```/g, "").trim();
 
-    // Safely truncate to the last complete question object
-    const lastClosingBrace = fixed.lastIndexOf("}");
-    const lastClosingBracket = fixed.lastIndexOf("]");
-    const validEnd = Math.min(lastClosingBrace + 1, lastClosingBracket + 1);
-    fixed = fixed.slice(0, validEnd);
-
-    // Ensure it ends with `]`
-    if (!fixed.endsWith("]")) fixed += "]";
-
-    return fixed;
-  }
-
-  let quizData = sanitizeGeminiOutput(responseText);
-  console.log("Sanitized Gemini Response:\n", quizData);
-
-  try {
-    return JSON.parse(quizData); // Parse the sanitized JSON
-  } catch (err) {
-    console.error("Failed to parse Gemini response:", err);
-    console.error("Raw Gemini Response:\n", responseText); // Log raw response for debugging
-    throw new Error("Gemini returned invalid JSON.");
-  }
+  return JSON.parse(quizData);
 }
 
 // Generate lesson using Gemini AI
-// Define the Type object manually to avoid the 'Type is not defined' error
 const generateLesson = async (subject, topic, subTopic, levelOfQuestions) => {
   let category = subject;
 
@@ -208,8 +159,6 @@ const generateLesson = async (subject, topic, subTopic, levelOfQuestions) => {
     const candidate = result?.response?.candidates?.[0];
     let rawText;
 
-
-
     // Check if candidate and content are valid
     if (candidate?.content?.parts?.[0]?.text) {
       rawText = candidate.content.parts[0].text;
@@ -261,8 +210,6 @@ async function generateQuizFromText(text) {
   ]
   `;
 
-
-
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
@@ -313,7 +260,6 @@ async function run() {
     const lessonsCollection = client.db("quizGenius").collection("lessons");
 
     app.post("/create_payment_invoice", async (req, res) => {
-
       const { ammount } = req.body;
 
       // const ammount = parseInt(sammount);
@@ -337,7 +283,6 @@ async function run() {
         const data = await response.json();
         res.send(data);
       } catch (error) {
-       
         res.status(500).json({ error: "Failed to create payment invoice" });
       }
     });
@@ -351,7 +296,7 @@ async function run() {
         numOfQuestions = 5,
         levelOfQuestions = "Intermediate",
       } = req.query;
-    
+
       // const existingQuiz = await quizzesCollection.findOne({
       //   subject: selectedSubject,
       //   topic: selectedTopic,
@@ -370,19 +315,25 @@ async function run() {
         levelOfQuestions,
         numOfQuestions
       );
+      
 
-      // const newQuiz = {
-      //   subject: selectedSubject,
-      //   topic: selectedTopic,
-      //   subTopic: subTopics,
-      //   difficulty: levelOfQuestions,
-      //   questions: quizData,
-      //   createdAt: new Date(),
-      // };
+      const newQuiz = {
+        subject: selectedSubject,
+        topic: selectedTopic,
+        subTopic: subTopics,
+        difficulty: levelOfQuestions,
+        questions: quizData,
+        createdAt: new Date(),
+      };
 
-      // await quizzesCollection.insertOne(newQuiz);
+      await quizzesCollection.insertOne(newQuiz);
       res.send(quizData);
     });
+
+    app.get("given-quizzes",async(req,res)=>{
+      const params = req.params;
+      console.log(params)
+    })
 
     app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
       try {
@@ -431,7 +382,6 @@ async function run() {
     });
 
     app.get("/lessons", async (req, res) => {
-    
       const page = parseInt(req.query.currentPage);
       const size = parseInt(req.query.itemsPerPage);
       const skip = page * size;
@@ -441,6 +391,7 @@ async function run() {
         .skip(skip)
         .limit(size)
         .toArray();
+     
       res.send({ result, count });
     });
     app.get("/lesson/:id", async (req, res) => {
@@ -467,7 +418,7 @@ async function run() {
 
       try {
         const query = { subject: subject };
-        if (topic && topic.length() > 0) {
+        if (topic) {
           query.topic = topic;
         }
         let result;
@@ -479,11 +430,7 @@ async function run() {
             .limit(size)
             .toArray();
         }
-        result = await lessonsCollection
-          .find(query).toArray();
-
-    
-
+        result = await lessonsCollection.find(query).toArray();
         res.send({ result, count });
       } catch (error) {
         console.error("Error fetching lessons:", error);
@@ -517,10 +464,6 @@ async function run() {
     });
 
     console.log("Connected to MongoDB!");
-
-    
-
-    // console.log("Connected to MongoDB!");
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
   }
