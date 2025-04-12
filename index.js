@@ -10,10 +10,13 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const pdf = require("pdf-parse");
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const jwt = require("jsonwebtoken");
+const cookieParser = require("cookie-parser");
+
 
 app.use(
   cors({
-    origin: "*",
+    origin: ["*","http://localhost:5173"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
@@ -21,7 +24,26 @@ app.use(
 
 // Middleware
 app.use(express.json());
+app.use(cookieParser());
 const upload = multer({ storage: multer.memoryStorage() });
+
+
+
+const verifyToken = (req, res, next) => {
+  const token = req.cookies?.token;
+  if (!token) {
+    return res.status(401).json({ message: "Unauthorized: No token provided" });
+  }
+
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({ message: "Unauthorized: Invalid token" });
+    }
+    req.user = decoded;
+    next();
+  });
+};
+
 
 // MongoDB Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.cd15p.mongodb.net/?retryWrites=true&w=majority`;
@@ -258,6 +280,33 @@ async function run() {
     const database = client.db("quizzGenius");
     const paymentsCollection = database.collection("payments");
     const lessonsCollection = client.db("quizGenius").collection("lessons");
+
+
+    // Jwt set up
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      console.log("jwt worked")
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
+
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+
+        .send({ success: true });
+    });
+
+    app.post("/logout", (req, res) => {
+      res
+        .clearCookie("token", "", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
+        })
+        .send({ message: "Logged out successfully" });
+    });
 
     app.post("/create_payment_invoice", async (req, res) => {
       const { ammount } = req.body;
