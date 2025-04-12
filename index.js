@@ -13,7 +13,7 @@ const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5000"],
+    origin: "*", 
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
@@ -305,7 +305,8 @@ async function generateQuizFromText(text) {
 
 async function run() {
   try {
-    await client.connect();
+    // await client.connect();
+
     const quizzesCollection = client.db("quizGenius").collection("quizzes");
     const database = client.db("quizzGenius");
     const paymentsCollection = database.collection("payments");
@@ -350,7 +351,7 @@ async function run() {
         numOfQuestions = 5,
         levelOfQuestions = "Intermediate",
       } = req.query;
-
+    
       // const existingQuiz = await quizzesCollection.findOne({
       //   subject: selectedSubject,
       //   topic: selectedTopic,
@@ -516,6 +517,10 @@ async function run() {
     });
 
     console.log("Connected to MongoDB!");
+
+    
+
+    // console.log("Connected to MongoDB!");
   } catch (error) {
     console.error("MongoDB Connection Error:", error);
   }
