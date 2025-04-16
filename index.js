@@ -12,11 +12,13 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 const jwt = require("jsonwebtoken");
 const cookieParser = require("cookie-parser");
-
+const cheerio = require("cheerio");
+const axios = require("axios");
+const { v4: uuidv4 } = require("uuid");
 
 app.use(
   cors({
-    origin: ["*","http://localhost:5173"],
+    origin: ["*", "http://localhost:5173"],
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   })
@@ -26,8 +28,6 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 const upload = multer({ storage: multer.memoryStorage() });
-
-
 
 const verifyToken = (req, res, next) => {
   const token = req.cookies?.token;
@@ -43,7 +43,6 @@ const verifyToken = (req, res, next) => {
     next();
   });
 };
-
 
 // MongoDB Connection
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.cd15p.mongodb.net/?retryWrites=true&w=majority`;
@@ -212,7 +211,6 @@ const generateLesson = async (subject, topic, subTopic, levelOfQuestions) => {
 };
 
 async function generateQuizFromText(text) {
-  // Constructing the prompt using the extracted text
   const prompt = `
   You are an educational AI. Generate 5 multiple-choice quiz questions based on the following content:
   \n\n${text}
@@ -272,6 +270,47 @@ async function generateQuizFromText(text) {
   }
 }
 
+async function generateQuizFromLink(text) {
+  console.log(text);
+  // Constructing the prompt using the extracted text
+  const prompt = `
+  You are an educational AI. Generate 5 multiple-choice quiz questions based on the following content:
+  \n\n${text}
+  
+  The quiz should be suitable for an intermediate-level learner.
+  Each question should have 4 options with one correct answer, and a brief explanation of the correct answer.
+
+  Return a **valid, compact, one-line JSON array** with the following structure:
+  [
+    {
+      "question": "...",
+      "options": ["...", "...", "...", "..."],
+      "correctAnswer": "...",
+      "explanation": "..."
+    },
+    ...
+  ]
+  `;
+
+  console.log("Sending request to Gemini API...");
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  let quizData = response.text();
+
+  // Clean up JSON format
+  quizData = quizData.replace(/```json|```/g, "").trim();
+
+  return JSON.parse(quizData);
+}
+function isValidUrl(string) {
+  try {
+    new URL(string);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 async function run() {
   try {
     // await client.connect();
@@ -281,11 +320,10 @@ async function run() {
     const paymentsCollection = database.collection("payments");
     const lessonsCollection = client.db("quizGenius").collection("lessons");
 
-
     // Jwt set up
     app.post("/jwt", async (req, res) => {
       const user = req.body;
-      console.log("jwt worked")
+      console.log("jwt worked");
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET);
 
       res
@@ -364,7 +402,6 @@ async function run() {
         levelOfQuestions,
         numOfQuestions
       );
-      
 
       const newQuiz = {
         subject: selectedSubject,
@@ -379,10 +416,9 @@ async function run() {
       res.send(quizData);
     });
 
-    app.get("given-quizzes",async(req,res)=>{
+    app.get("given-quizzes", async (req, res) => {
       const params = req.params;
-      console.log(params)
-    })
+    });
 
     app.post("/upload-pdf", upload.single("pdf"), async (req, res) => {
       try {
@@ -398,12 +434,45 @@ async function run() {
 
         const quizData = await generateQuizFromText(text);
 
-        res.json({ quiz: quizData });
+        const quizWithIds = quizData.map((q) => ({
+          ...q,
+          id: uuidv4(),
+        }));
+
+        res.json({ quiz: quizWithIds });
       } catch (error) {
         res
           .status(500)
           .json({ message: "Failed to process PDF and generate quiz" });
       }
+    });
+
+    app.get("/generate-quiz-from-link", async (req, res) => {
+      const { link } = req.query;
+
+      if (!link || link === "https://" || !isValidUrl(link)) {
+        return res.status(400).json({ error: "A valid link is required" });
+      }
+
+      // Fetch HTML content from the URL
+      const { data: html } = await axios.get(link);
+
+      // Load HTML into cheerio
+      const $ = cheerio.load(html);
+
+      // Extract main text content (simplified)
+      const text = $("body").text();
+
+      // Clean it up
+      const cleanText = text.replace(/\s+/g, " ").trim();
+      const quizData = await generateQuizFromLink(cleanText);
+
+      const quizWithIds = quizData.map((q) => ({
+        ...q,
+        id: uuidv4(),
+      }));
+  
+      res.json({ quiz: quizWithIds });
     });
 
     // Generate Lessons
@@ -440,7 +509,7 @@ async function run() {
         .skip(skip)
         .limit(size)
         .toArray();
-     
+
       res.send({ result, count });
     });
     app.get("/lesson/:id", async (req, res) => {
